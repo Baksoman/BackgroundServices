@@ -34,6 +34,8 @@ class TrackerService : Service(), SensorEventListener {
     private var movePeak = 0f
     private var exerciseFinished = false
 
+    private var exerciseStartTime = 0L
+
     companion object {
         const val EXTRA_MODE = "extra_mode"
         const val MODE_EXERCISE = "mode_exercise"
@@ -45,6 +47,16 @@ class TrackerService : Service(), SensorEventListener {
         const val MOVE_COOLDOWN_MS = 400L
 
         var countListener: ((Int, Int) -> Unit)? = null
+
+        const val ACTION_EXERCISE_FINISHED =
+            "com.example.backgroundservices.ACTION_EXERCISE_FINISHED"
+
+        const val EXTRA_JUMP_COUNT = "extra_jump_count"
+        const val EXTRA_STEP_COUNT = "extra_step_count"
+        const val EXTRA_START_TIME = "extra_start_time"
+        const val EXTRA_END_TIME = "extra_end_time"
+
+        const val NOTIFICATION_ID_EXERCISE_FINISHED = 3
     }
 
     override fun onCreate(){
@@ -162,6 +174,8 @@ class TrackerService : Service(), SensorEventListener {
 
         publishCounts()
 
+        exerciseStartTime = System.currentTimeMillis()
+
         accelerometer?.also {
             sensorManager.registerListener(
                 this,
@@ -177,7 +191,66 @@ class TrackerService : Service(), SensorEventListener {
         exerciseFinished = true
         sensorManager.unregisterListener(this)
 
-        statusLogExerciseFinished()
+        val endTime = System.currentTimeMillis()
+
+        val finishIntent = Intent(
+            this,
+            MainActivity::class.java
+        ).apply {
+            action = MainActivity.ACTION_EXERCISE_FINISHED
+
+            putExtra(MainActivity.EXTRA_JUMP_COUNT, exerciseJumpCount)
+            putExtra(MainActivity.EXTRA_STEP_COUNT, exerciseStepCount)
+            putExtra(MainActivity.EXTRA_START_TIME, exerciseStartTime)
+            putExtra(MainActivity.EXTRA_END_TIME, endTime)
+
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+
+        val pendingFinishIntent = PendingIntent.getActivity(
+            this,
+            2,
+            finishIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or
+                    PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val finishNotification = NotificationCompat.Builder(
+            this,
+            NOTIFICATION_CHANNEL_ID_JUMP_DETECTED
+        )
+            .setContentTitle("Latihan Selesai!")
+            .setContentText(
+                "Total lompatan: $exerciseJumpCount. Ketuk untuk membuka aplikasi."
+            )
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentIntent(pendingFinishIntent)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+
+        try {
+            NotificationManagerCompat.from(this).notify(
+                MainActivity.NOTIFICATION_ID_EXERCISE_FINISHED,
+                finishNotification
+            )
+        } catch (e: SecurityException) {
+            Log.e(
+                "Tracker Service",
+                "Gagal menampilkan notifikasi: ${e.message}"
+            )
+        }
+
+        try {
+            startActivity(finishIntent)
+        } catch (e: Exception) {
+            Log.e(
+                "Tracker Service",
+                "Gagal membuka aplikasi: ${e.message}"
+            )
+        }
 
         stopSelf()
     }
