@@ -26,6 +26,27 @@ class TrackerService : Service(), SensorEventListener {
     private val NOTIFICATION_ID_SERVICE_RUNNING = 1
     private val NOTIFICATION_ID_JUMP_DETECTED = 2
 
+    private var isExerciseMode = false
+    private var exerciseJumpCount = 0
+    private var exerciseStepCount = 0
+    private var lastMoveTime = 0L
+    private var moveWindowStart = 0L
+    private var movePeak = 0f
+    private var exerciseFinished = false
+
+    companion object {
+        const val EXTRA_MODE = "extra_mode"
+        const val MODE_EXERCISE = "mode_exercise"
+
+        const val EXERCISE_STEP_THRESHOLD = 2
+        const val STEP_ACCEL_THRESHOLD = 12f
+        const val JUMP_ACCEL_THRESHOLD = 15f
+        const val MOVE_WINDOW_MS = 150L
+        const val MOVE_COOLDOWN_MS = 400L
+
+        var countListener: ((Int, Int) -> Unit)? = null
+    }
+
     override fun onCreate(){
         super.onCreate()
         sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
@@ -89,7 +110,15 @@ class TrackerService : Service(), SensorEventListener {
             buildServiceRunningNotification()
         )
 
-        startJumpDetection()
+        isExerciseMode =
+            intent?.getStringExtra(EXTRA_MODE) == MODE_EXERCISE
+
+        if (isExerciseMode) {
+            startExerciseDetection()
+        } else {
+            startJumpDetection()
+        }
+
         return START_STICKY
     }
 
@@ -119,6 +148,48 @@ class TrackerService : Service(), SensorEventListener {
         }
     }
 
+    private fun publishCounts() {
+        countListener?.invoke(exerciseStepCount, exerciseJumpCount)
+    }
+
+    private fun startExerciseDetection() {
+        exerciseJumpCount = 0
+        exerciseStepCount = 0
+        lastMoveTime = 0L
+        moveWindowStart = 0L
+        movePeak = 0f
+        exerciseFinished = false
+
+        publishCounts()
+
+        accelerometer?.also {
+            sensorManager.registerListener(
+                this,
+                it,
+                SensorManager.SENSOR_DELAY_GAME
+            )
+        }
+    }
+
+    private fun finishExercise() {
+        if (exerciseFinished) return
+
+        exerciseFinished = true
+        sensorManager.unregisterListener(this)
+
+        statusLogExerciseFinished()
+
+        stopSelf()
+    }
+
+    private fun statusLogExerciseFinished() {
+        Log.d(
+            "Tracker Service",
+            "Latihan selesai. Langkah: $exerciseStepCount, " +
+                    "Lompatan: $exerciseJumpCount"
+        )
+    }
+
     override fun onBind(intent: Intent): IBinder? {
         return null
     }
@@ -128,19 +199,68 @@ class TrackerService : Service(), SensorEventListener {
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
-        if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER){
-            val y = event.values[1]
-            val jumpThreshold = 15.0
+        if (event?.sensor?.type != Sensor.TYPE_ACCELEROMETER) {
+            return
+        }
 
-            if (abs(y) > jumpThreshold) {
-                Log.d("Tracker Service", "LOMPATAN Terdeteksi! y: $y")
+        if (isExerciseMode) {
+            if (exerciseFinished) return
 
-                sensorManager.unregisterListener(this)
+            val absY = abs(event.values[1])
+            val now = System.currentTimeMillis()
 
-                showJumpNotification()
-                stopSelf()
+            if (moveWindowStart == 0L) {
+                if (
+                    absY > STEP_ACCEL_THRESHOLD &&
+                    now - lastMoveTime > MOVE_COOLDOWN_MS
+                ) {
+                    moveWindowStart = now
+                    movePeak = absY
+                }
+            } else {
+                if (absY > movePeak) {
+                    movePeak = absY
+                }
+
+                if (now - moveWindowStart >= MOVE_WINDOW_MS) {
+                    if (movePeak > JUMP_ACCEL_THRESHOLD) {
+                        exerciseJumpCount++
+                        Log.d(
+                            "Tracker Service",
+                            "Lompatan ke-$exerciseJumpCount"
+                        )
+                    } else {
+                        exerciseStepCount++
+                        Log.d(
+                            "Tracker Service",
+                            "Langkah ke-$exerciseStepCount"
+                        )
+                    }
+
+                    lastMoveTime = now
+                    moveWindowStart = 0L
+                    movePeak = 0f
+
+                    publishCounts()
+
+                    if (exerciseStepCount > EXERCISE_STEP_THRESHOLD) {
+                        finishExercise()
+                    }
+                }
             }
 
+            return
+        }
+
+        val y = event.values[1]
+        val jumpThreshold = 15.0
+
+        if (abs(y) > jumpThreshold) {
+            Log.d("Tracker Service", "LOMPATAN Terdeteksi! y: $y")
+
+            sensorManager.unregisterListener(this)
+            showJumpNotification()
+            stopSelf()
         }
     }
 

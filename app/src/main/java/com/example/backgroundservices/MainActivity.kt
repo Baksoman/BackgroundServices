@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
@@ -33,6 +34,9 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var statusTextView: TextView
     private lateinit var btnStart: Button
+
+    private lateinit var jumpCountTextView: TextView
+    private lateinit var btnStartExercise: Button
 
     companion object {
         const val ACTION_SERVICE_STOPPED_JUMP = "com.example.backgroundservices.ACTION_SERVICE_STOPPED_JUMP"
@@ -87,6 +91,43 @@ class MainActivity : AppCompatActivity() {
         handleIntent(intent)
     }
 
+    private fun startExerciseService() {
+        val serviceIntent = Intent(this, TrackerService::class.java).apply {
+            putExtra(
+                TrackerService.EXTRA_MODE,
+                TrackerService.MODE_EXERCISE
+            )
+        }
+
+        ContextCompat.startForegroundService(this, serviceIntent)
+
+        showCounts(0, 0)
+
+        statusTextView.text =
+            "Latihan dimulai. Lompat sebanyak mungkin, lalu berjalan lebih dari " +
+                    "${TrackerService.EXERCISE_STEP_THRESHOLD} langkah."
+    }
+
+    private fun showCounts(steps: Int, jumps: Int) {
+        jumpCountTextView.text =
+            "Jumlah Langkah: $steps\nJumlah Lompatan: $jumps"
+
+        jumpCountTextView.visibility = View.VISIBLE
+    }
+
+    override fun onStart() {
+        super.onStart()
+
+        TrackerService.countListener = { steps, jumps ->
+            showCounts(steps, jumps)
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        TrackerService.countListener = null
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -103,6 +144,21 @@ class MainActivity : AppCompatActivity() {
         btnStart.setOnClickListener {
             if (hasAllPermissions()) {
                 startTrackerService()
+            } else {
+                ActivityCompat.requestPermissions(
+                    this,
+                    permissionsToRequest,
+                    REQUEST_CODE_PERMISSIONS
+                )
+            }
+        }
+
+        btnStartExercise = findViewById(R.id.btnStartExercise)
+        jumpCountTextView = findViewById(R.id.jumpCountTextView)
+
+        btnStartExercise.setOnClickListener {
+            if (hasAllPermissions()) {
+                startExerciseService()
             } else {
                 ActivityCompat.requestPermissions(
                     this,
