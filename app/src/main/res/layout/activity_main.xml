@@ -32,6 +32,16 @@
             android:text="Service akan berhenti saat Anda Melompat"
             android:textSize="15sp"/>
 
+        <TextView
+            android:id="@+id/jumpCountTextView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text=""
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
         <Button
             android:id="@+id/btnStart"
             android:layout_width="wrap_content"
