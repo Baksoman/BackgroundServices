@@ -26,12 +26,14 @@
             android:textSize="15sp" />
 
         <TextView
+            android:id="@+id/statusTextView"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Service akan berhenti saat Anda Melompat"
             android:textSize="15sp"/>
 
         <Button
+            android:id="@+id/btnStart"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Mulai Lacak Aktivitas" />
